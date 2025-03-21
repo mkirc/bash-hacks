@@ -6,11 +6,12 @@
 test1=("a" "b" "c")
 test2=("d")
 test3=("a" "b")
+test4=("a" "d")
 
 # Run the examples herein like:
 # bash arrayStuff.sh [function name]
 
-# Picture yourself with the need to check if a string is an element if an indexed
+# Picture yourself with the need to check of a string is an element if an indexed
 # array in bash. So you phrase this task to a search engine (or worse) and the
 # following might come up:
 
@@ -21,6 +22,7 @@ simpleElementIn() {
     # Args: [Element to find] [Elements possible...]
     # Returns True if element is found, else false.
     local e match="$1"
+    # echo "$match"
     shift
     # for without 'in' implicitly iterates over the
     # (shifted) argument list.
@@ -33,12 +35,14 @@ test_elementsIn() {
     simpleElementIn 'd' "${test1[@]}" && echo "should fail"
 }
 
-# This is a modified version, which uses the declare's '-n' flag, which allows to
+# This is a modified version, which uses declare's '-n' flag, which allows to
 # pass an array by reference. This feels cleaner and requires less typing.
 elementIn() {
     # Args: [Element to match]:String [Array to match]:Array
     local match="$1"
     local -n arrayToMatch="$2"
+
+    # echo "$match"
 
     for elm in "${arrayToMatch[@]}"; do
         [[ "$elm" == "$match" ]] && return 0
@@ -71,6 +75,7 @@ test_allElementsIn() {
     allElementsIn test1 test1 && echo 'should work'
     allElementsIn test3 test1 && echo 'should also work'
     allElementsIn test2 test1 && echo 'should fail'
+    allElementsIn test4 test1 && echo 'should also fail'
 }
 # ... which works but feels boring, right? We can do better. Since the
 # fundamental type in shell is just the String, we can evaluate an expression
@@ -91,10 +96,11 @@ all() {
     return 0
 
 }
-test_all_elementsIn() {
+test_all_elementIn() {
     all elementIn test1 test1 && echo 'should work'
     all elementIn test3 test1 && echo 'should also work'
     all elementIn test2 test1 && echo 'should fail'
+    all elementIn test4 test1 && echo 'should also fail'
 }
 
 # So it seems our array-and-strings-based life in the shell is good.
@@ -102,42 +108,70 @@ test_all_elementsIn() {
 # pass around arrays without typing "${[@]}" all the time.
 # But now consider that:
 
-# This example exposes a problem with call-by-reference: external commands can't
-# access array2. This function works when composed with 'simpleElementIn', since
-# the values of array2 are actually expanded to the command line. Note, that the
-# whole thing only works by allowing recursive dispatch on the script, which is
-# arguably esoteric already.
+# The next example exposes a problem with call-by-reference: external commands can't
+# access arrays. The following function works when composed with 'simpleElementIn',
+# since the values of array2 are actually expanded to the command line. Note, that 
+# the xargs call uses uses recursive dispatch, as described in 
+# ./dispatch/recursive_dispatch.sh.
 parallelAll() {
     local exp="$1"
     local -n array1="$2"
     local -n array2="$3"
 
-    echo "${array1[@]}" | xargs bash "$0" "$exp" $(cat /dev/stdin) "${array2[@]}"
+    # echo "${array1[@]}"
+
+    printf '%s\0' "${array1[@]}" | xargs -0 -I {} -P 3 bash "$0" "$exp" "{}" "${array2[@]}" 
+
 }
+# Btw this works because xargs exits with status 123 if any of the invocations exit with
+# status 1-125.
 
 test_parallel() {
     parallelAll simpleElementIn test1 test1 && echo "should work"
     parallelAll simpleElementIn test3 test1 && echo "should also work"
     parallelAll simpleElementIn test2 test1 && echo "should fail"
+    parallelAll simpleElementIn test4 test1 && echo "should also fail"
+}
+
+parallelAllWithArrays() {
+    local exp="$1"
+    local -n array1="$2"
+    local -n array2="$3"
+
+    # echo "${array1[@]}"
+
+    # echo "${array1[@]}" | xargs -t -I {} -P 3 bash "$0" "$exp" "{}" array2
+    printf '%s\0' "${array1[@]}" | xargs -t -0 -I {} -P 3 bash "$0" "$exp" "{}" array2
+
+}
+
+test_parallelWithArrays() {
+    # none of these work
+    parallelAllWithArrays elementIn test1 test1 && echo "should work"
+    parallelAllWithArrays elementIn test3 test1 && echo "should also work"
+    parallelAllWithArrays elementIn test2 test1 && echo "should fail"
+    parallelAllWithArrays elementIn test4 test1 && echo "should also fail"
+    # this just does not work
 }
 
 # So here we have found a discrepancy: We can compose array-based functions
-# inside of the script's scope nicely but we can't pass them _to_ our script.
-# This can only be done by passing the values, which poses addional overhead to
+# inside of the script's scope nicely but we can't pass arrays _to_ our script.
+# All we can do is passing the values, which poses additional overhead to
 # ensure compatibility (such as parsing values into arrays again). This is the
 # perfect place for bugs to crawl in.
 
 # There is but a loophole: Its in fact possible to pass arrays to functions
-# delared in other scripts by source'ing them. 'source' can take
+# declared in other scripts by 'source'ing them. 'source' can take
 # arguments and since it executes the commands in the current shell,
-# variables 'carry over'. I guess here we go down even further in the
-# rabbit hole of esoteric-but-may-be-useful shell aspects. But think about
+# variables 'carry over'. I guess here we go down even further the
+# rabbit hole of esoteric-but-maybe-useful shell aspects. But think about
 # it: This technique can be used to create an array-based 'functional core'
 # of scripts than can be factored in a sane fashion, which in turn can be
 # directed by an 'impoerative shell', which acts like any other shell
-# script as in 'does not accept arrays as argument'.
+# script.
 test_source() {
     source ./arrays/toBeSourced.sh arrayFun test1
 }
 
 source ./dispatch/recursive_dispatch.sh
+

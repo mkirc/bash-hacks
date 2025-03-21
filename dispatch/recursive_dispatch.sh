@@ -10,6 +10,8 @@
 
 # you can enable recursive_dispatch by putting a `source ./recursive_dispatch.sh`
 # on the last line of your script.
+
+
 function_exists() {
     # bashism to test is function is declared in top level scope.
     # also works for functions sourced from other files.
@@ -20,7 +22,7 @@ function_exists() {
 allow_recursive_dispatch() {
     # Ensure the first argument is a function declared in this file.
     # now commands that run external commands like xargs can call
-    # functions like so: 'command $0 FUNCTION_NAME'
+    # functions like so: 'command $0 function_name'
     # Furthermore this script can run the functions declared
     # herein as subcommands.
     function_exists "$1" && "$@"

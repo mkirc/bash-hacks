@@ -37,7 +37,7 @@ test_elementsIn() {
 
 # This is a modified version, which uses declare's '-n' flag, which allows to
 # pass an array by reference. This feels cleaner and requires less typing.
-elementIn() {
+elementInArray() {
     # Args: [Element to match]:String [Array to match]:Array
     local match="$1"
     local -n arrayToMatch="$2"
@@ -50,23 +50,23 @@ elementIn() {
     return 1
 }
 
-test_noShiftElementsIn() {
-    elementIn 'a' test1 && echo 'should work'
-    elementIn 'd' test1 && echo 'should fail'
+test_elementInArray() {
+    elementInArray 'a' test1 && echo 'should work'
+    elementInArray 'd' test1 && echo 'should fail'
 }
 
 # Nice. So next we may want a function which can test for all elements of another
 # array (lets call it array1), if its elements are element of another array (lets
 # call that array2)
 
-# A simple solution would be to just iterate over array1 and apply 'elementIn' to
+# A simple solution would be to just iterate over array1 and apply 'elementInArray' to
 # its elements and array2...
 allElementsIn() {
     local -n array1="$1"
     local -n array2="$2"
 
     for elm in "${array1[@]}"; do
-        elementIn "$elm" array2 || return 1
+        elementInArray "$elm" array2 || return 1
     done
     return 0
 }
@@ -96,20 +96,19 @@ all() {
     return 0
 
 }
-test_all_elementIn() {
-    all elementIn test1 test1 && echo 'should work'
-    all elementIn test3 test1 && echo 'should also work'
-    all elementIn test2 test1 && echo 'should fail'
-    all elementIn test4 test1 && echo 'should also fail'
+test_all_elementInArray() {
+    all elementInArray test1 test1 && echo 'should work'
+    all elementInArray test3 test1 && echo 'should also work'
+    all elementInArray test2 test1 && echo 'should fail'
+    all elementInArray test4 test1 && echo 'should also fail'
 }
 
-# So it seems our array-and-strings-based life in the shell is good.
-# We can define clean interfaces with minimal responsibility and
-# pass around arrays without typing "${[@]}" all the time.
-# But now consider that:
+# So it seems our array-and-strings-based life in the shell is good.  We can
+# define clean interfaces with minimal responsibility and pass around arrays
+# without typing "${[@]}" all the time. The next example exposes a problem
+# with call-by-reference: external commands can't access arrays. 
 
-# The next example exposes a problem with call-by-reference: external commands can't
-# access arrays. The following function works when composed with 'simpleElementIn',
+# The following function works when composed with 'simpleElementIn',
 # since the values of array2 are actually expanded to the command line. Note, that 
 # the xargs call uses uses recursive dispatch, as described in 
 # ./dispatch/recursive_dispatch.sh.
@@ -133,6 +132,7 @@ test_parallel() {
     parallelAll simpleElementIn test4 test1 && echo "should also fail"
 }
 
+# Here's the same thing but with passing the array by reference
 parallelAllWithArrays() {
     local exp="$1"
     local -n array1="$2"
@@ -140,17 +140,16 @@ parallelAllWithArrays() {
 
     # echo "${array1[@]}"
 
-    # echo "${array1[@]}" | xargs -t -I {} -P 3 bash "$0" "$exp" "{}" array2
     printf '%s\0' "${array1[@]}" | xargs -t -0 -I {} -P 3 bash "$0" "$exp" "{}" array2
 
 }
 
 test_parallelWithArrays() {
     # none of these work
-    parallelAllWithArrays elementIn test1 test1 && echo "should work"
-    parallelAllWithArrays elementIn test3 test1 && echo "should also work"
-    parallelAllWithArrays elementIn test2 test1 && echo "should fail"
-    parallelAllWithArrays elementIn test4 test1 && echo "should also fail"
+    parallelAllWithArrays elementInArray test1 test1 && echo "should work"
+    parallelAllWithArrays elementInArray test3 test1 && echo "should also work"
+    parallelAllWithArrays elementInArray test2 test1 && echo "should fail"
+    parallelAllWithArrays elementInArray test4 test1 && echo "should also fail"
     # this just does not work
 }
 

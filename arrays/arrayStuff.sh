@@ -251,11 +251,14 @@ test_operators() {
 # We wont use it for now, but I can hear it calling my name!
 
 # Lets use our newly gained knowledge to construct a function which returns an
-# array. It could be anything, so lets go with a reimplementation of cat for
+# array. It could be anything, so lets go with a reimplementation of cat, but for
 # arrays:
 catArray() {
     # Args: [Names of arrays to concatenate: String...]
     # Returns: [Quoted String of concatenated Array Elements: String]
+
+    # Note the unusual quoting syntax. This is mandatory when constructing
+    # arrays from @Q-transformed strings
     local -a params="(${@:-$(</dev/stdin)})"
     for ((i=0; i<"${#params[@]}"; i++)); do
         local -n arr"${i}"="${params[${i}]}"
@@ -284,29 +287,32 @@ test_cat() {
 splitArray() {
     # Args: [Quoted string of array elements: String]
     # Returns: [Newline-separated array elements: String]
-    local -a arr="( ${@:-$(</dev/stdin)} )"
+    local -a tempArray="( ${@:-$(</dev/stdin)} )"
     # declare -p arr
-    printf '%s\n' "${arr[@]}"
+    printf '%s\n' "${tempArray[@]}"
+}
+
+# This is the inverse function to splitarray
+unsplitArray() {
+    # Args: [Newline-separated array elements: String]
+    # Returns [Quoted string of array elements: String]
+    local -a tempArray=()
+    if [[ $# -gt 0 ]]; then
+        readarray -t tempArray < <(echo "$@")
+    else
+        readarray -t tempArray </dev/stdin
+    fi
+    # declare -p tempArray
+    echo "${tempArray[@]@Q}"
 }
 
 test_split() {
     [[ $(splitArray "${test6[@]@Q}") == $(echo "${test6[@]@Q}" | splitArray) ]] && echo 'should work'
-    [[ $(catArray test6 test6 | splitArray | sort -u) == $(printf '%s\n' "${test6[@]}") ]] && echo 'should work'
+    [[ $(catArray test6 test6 | splitArray | sort -u) == $(splitArray "${test6[@]@Q}") ]] && echo 'should work'
+    [[ $(catArray test6 | splitArray | unsplitArray) == $(catArray test6) ]] && echo 'should also work'
+    [[ $(unsplitArray $'a b\nc d') == $(echo $'a b\nc d' | unsplitArray) ]] && echo 'should also work'
 }
 
-# or, you know, get an array back:
-makeArray() {
-    # Args: [Name of array to construct: String] [Quoted string of array elements: String]
-    # Returns [True if array creation went without error, else False: Bool]
-    declare -n ref="$1"
-    shift
-    ref+=("$@")
-}
-
-test_makeArray() {
-    makeArray newArray 'a b' 'c d'
-    declare -p newArray
-}
 
 source ./dispatch/recursive_dispatch.sh
 

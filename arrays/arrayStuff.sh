@@ -7,7 +7,6 @@ test1=("a" "b" "c")
 test2=("d")
 test3=("a" "b")
 test4=("a" "d")
-test5=("a" "a" "a")
 test6=("a b" "c d")
 
 # Run the examples herein like:
@@ -43,39 +42,40 @@ test_elementsIn() {
 
 # This is a modified version, using declare's '-n' flag, which allows to
 # pass an array by reference. This feels cleaner and requires less typing.
-elementInArray() {
-    # Args: [Element to match: String] [Array to match: Array]
-    local match="$1"
-    local -n arrayToMatch="$2"
+inArray() {
+    # Args: [Array to match: Array] [Element to match: String]
+    local -n arrayToMatch="$1"
+    local match="$2"
 
     # echo "$match"
-
+    local elm
     for elm in "${arrayToMatch[@]}"; do
         [[ "$elm" == "$match" ]] && return 0
      done
     return 1
 }
 
-test_elementInArray() {
-    elementInArray 'a' test1 && echo 'should work'
-    elementInArray 'a b' test6 && echo 'should also work'
-    elementInArray 'd' test1 && echo 'should fail'
-    elementInArray 'a' test6 && echo 'should also fail'
+test_inArray() {
+    inArray test1 'a' && echo 'should work'
+    inArray test6 'a b' && echo 'should also work'
+    inArray test1 'd' && echo 'should fail'
+    inArray test6 'a' && echo 'should also fail'
 }
 
 # Nice. So next we may want a function which can test for all elements of another
 # array (lets call it array1), if its elements are element of another array (lets
 # call that array2)
 
-# A simple solution would be to just iterate over array1 and apply 'elementInArray' to
+# A simple solution would be to just iterate over array1 and apply 'inArray' to
 # its elements and array2...
 allElementsIn() {
     # Args: [Name of Array to compare from: String] [Name of array to compare against: String]
     local -n array1="$1"
     local -n array2="$2"
+    local elm
 
     for elm in "${array1[@]}"; do
-        elementInArray "$elm" array2 || return 1
+        inArray "$elm" array2 || return 1
     done
     return 0
 }
@@ -88,43 +88,68 @@ test_allElementsIn() {
 }
 # ... which works but feels boring, right? We can do better. Since the
 # fundamental type in shell is just the String, we can evaluate an expression
-# by just passing its name:
+# by just passing its name.
 
-# This function can take an expression, which itself is acting on a single
-# element and an array, in order to perform its action on all elements of an
-# input array. Note how it composes nicely by juxtaposition.
+# This function can take an expression, which itself can be anything acting on
+# a number of parameters and a single element, in order to perform its action
+# on all elements of an input array. Note how it composes nicely by juxtaposition.
 all() {
     # Args: [Name of Array to compare from: String] [Expression] [Name of array to compare against: String]
     local -n array1="$1"
-    local expression="$2"
-    local -n array2="$3"
+    local elm
+    shift
 
     for elm in "${array1[@]}"; do
-        "$expression" "$elm" array2 || return 1
+        "$@" "$elm" || return 1
     done
     return 0
+}
 
+# this is an example of another expression which can be composed in that way:
+not() {
+    if "$@"; then
+        return 1
+    else
+        return 0
+    fi
 }
-test_all_elementInArray() {
-    all test1 elementInArray test1 && echo 'should work'
-    all test3 elementInArray test1 && echo 'should also work'
-    all test6 elementInArray test6 && echo "should also work"
-    all test2 elementInArray test1 && echo 'should fail'
-    all test4 elementInArray test1 && echo 'should also fail'
-    all test1 elementInArray test6 && echo 'should also fail'
-}
+
 # and for completeness sake:
 any() {
-    # Args: Array Expression Array
+    # Args: Array Expression
     local -n array1="$1"
-    local expression="$2"
-    local -n array2="$3"
+    local elm
+    shift
 
     for elm in "${array1[@]}"; do
-        "$expression" "$elm" array2 && return 0
+        "$@" "$elm" && return 0
     done
     return 1
 }
+
+
+test_all_inArray() {
+    all test1 inArray test1 && echo 'should work'
+    all test3 inArray test1 && echo 'should also work'
+    all test6 inArray test6 && echo "should also work"
+    all test2 inArray test1 && echo 'should fail'
+    all test4 inArray test1 && echo 'should also fail'
+    all test1 inArray test6 && echo 'should also fail'
+
+    # none found
+    all test1 not inArray test6 && echo 'should uhm work'
+    # some found
+    all test4 not inArray test1 && echo 'should uhm fail'
+    all test1 not inArray test1 && echo 'should fail'
+    all test3 not inArray test1 && echo 'should also fail'
+    all test6 not inArray test6 && echo "should also fail"
+    # (functionally equivalent to 'not any')
+
+    # these reduce to 'all ... || echo ...'
+    # not all test4 inArray test1 && echo 'should uhm also work'
+    # not all test1 inArray test6 && echo 'should uhm also work'
+}
+
 
 # So it seems our array-and-strings-based life in the shell is good.  We can
 # define clean interfaces with minimal responsibility and pass around arrays
@@ -172,10 +197,10 @@ parallelAllWithArrays() {
 
 test_parallelWithArrays() {
     # none of these work
-    parallelAllWithArrays test1 elementInArray test1 && echo "should work"
-    parallelAllWithArrays test3 elementInArray test1 && echo "should also work"
-    parallelAllWithArrays test2 elementInArray test1 && echo "should fail"
-    parallelAllWithArrays test4 elementInArray test1 && echo "should also fail"
+    parallelAllWithArrays test1 inArray test1 && echo "should work"
+    parallelAllWithArrays test3 inArray test1 && echo "should also work"
+    parallelAllWithArrays test2 inArray test1 && echo "should fail"
+    parallelAllWithArrays test4 inArray test1 && echo "should also fail"
     # this just does not work
 }
 
@@ -193,15 +218,13 @@ test_parallelWithArrays() {
 # dispatch in the source target, we can return function values or stdout as
 # well.
 test_sourceArray() {
-    local -a sourcedArray="( $(source ./arrays/toBeSourced.sh arrayFun test1) )"
-    declare -p sourcedArray
+    local -ar sourcedArray="( $(source ./arrays/toBeSourced.sh arrayFun test1) )"
+    all sourcedArray inArray test1 && echo 'should work'
 }
 test_sourceTruth() {
-    source ./arrays/toBeSourced.sh trueFun
-    echo $?
+    source ./arrays/toBeSourced.sh trueFun && echo 'should work'
 
-    source ./arrays/toBeSourced.sh falseFun
-    echo $?
+    source ./arrays/toBeSourced.sh falseFun && echo 'should fail'
 
 }
 
@@ -259,7 +282,8 @@ catArray() {
 
     # Note the unusual quoting syntax. This is mandatory when constructing
     # arrays from @Q-transformed strings
-    local -a params="(${@:-$(</dev/stdin)})"
+    local -a params="(${*:-$(</dev/stdin)})"
+    local i
     for ((i=0; i<"${#params[@]}"; i++)); do
         local -n arr"${i}"="${params[${i}]}"
     done
@@ -277,8 +301,8 @@ catArray() {
 # and in the last line we return the array with the @Q transformation applied.
 test_cat() {
     local -a test7=("${test6[@]}" "${test1[@]}")
-    [[ $(echo test6 test1 | catArray) == "${test7[@]@Q}" ]] && echo 'should work'
-    [[ $(catArray test6 test1) == "${test7[@]@Q}" ]] && echo 'should work'
+    [[ $(echo test6 test1 | catArray) == "${test7[*]@Q}" ]] && echo 'should work'
+    [[ $(catArray test6 test1) == "${test7[*]@Q}" ]] && echo 'should work'
     [[ $(catArray test6 test1) == $(catArray test7) ]] && echo 'should also work'
 }
 
@@ -287,7 +311,7 @@ test_cat() {
 splitArray() {
     # Args: [Quoted string of array elements: String]
     # Returns: [Newline-separated array elements: String]
-    local -a tempArray="( ${@:-$(</dev/stdin)} )"
+    local -ar tempArray="( ${*:-$(</dev/stdin)} )"
     # declare -p arr
     printf '%s\n' "${tempArray[@]}"
 }
@@ -308,9 +332,42 @@ unsplitArray() {
 
 test_split() {
     [[ $(splitArray "${test6[@]@Q}") == $(echo "${test6[@]@Q}" | splitArray) ]] && echo 'should work'
-    [[ $(catArray test6 test6 | splitArray | sort -u) == $(splitArray "${test6[@]@Q}") ]] && echo 'should work'
+    [[ $(catArray test6 test6 | splitArray | sort -u | unsplitArray) == $(catArray test6) ]] && echo 'should work'
     [[ $(catArray test6 | splitArray | unsplitArray) == $(catArray test6) ]] && echo 'should also work'
     [[ $(unsplitArray $'a b\nc d') == $(echo $'a b\nc d' | unsplitArray) ]] && echo 'should also work'
+}
+
+# ok, now we have a way to return arrays and manipulate them...but in the process we
+# moved away from the original goal: Now to type "${...[@]}" all the time. Now in
+# order to create a 'portable' array, we even need two characters more! catArray
+# is a bit of a rescue there but still.
+
+# Now lets see if we can get some of the composition back. For example we
+# may want all Elements of one Array which satisfy an expression acting
+# on them.
+getAll() {
+    # Args: [Name of Array to compare from: String] [Expression]
+    local -n array1="$1"
+    local -a out=()
+    local elm
+
+    shift
+
+    for elm in "${array1[@]}"; do
+        if "$@" "$elm"; then
+            out+=("$elm")
+        fi
+    done
+    echo "${out[@]@Q}"
+}
+
+test_getAll() {
+    [[ $(getAll test3 inArray test1) == $(catArray test3) ]] && echo "should work"
+    [[ $(getAll test1 inArray test1) == $(catArray test1) ]] && echo "should work"
+    [[ $(getAll test1 inArray test3) == $(catArray test3) ]] && echo "should work"
+    [[ $(getAll test4 inArray test1) == "'a'" ]] && echo 'should work'
+    [[ $(getAll test4 not inArray test1) == "'d'" ]] && echo 'should work'
+    [[ $(getAll test1 not inArray test1) == "" ]] && echo 'should work'
 }
 
 

@@ -20,7 +20,7 @@ test6=("a b" "c d")
 # values.
 simpleElementIn() {
     # Args: [Element to match: String] [Elements to match against: String...]
-    # Returns: [True if element is found, else false: Bool]
+    # Returns: [True if element is found, else false: Int]
     local e match="$1"
     shift
     # for without 'in' implicitly iterates over the
@@ -42,7 +42,7 @@ test_elementsIn() {
 # an array by reference. This feels cleaner and requires less typing.
 inArray() {
     # Args: [Name of array to match: String] [Element to match: String]
-    # Returns: [True if element is found, else false: Bool]
+    # Returns: [True if element is found, else false: Int]
     local -n arrayToMatch="$1"
     local match="$2"
     local elm
@@ -69,7 +69,7 @@ test_inArray() {
 # its elements and array2...
 allElementsIn() {
     # Args: [Name of Array to compare from: String] [Name of array to compare against: String]
-    # Returns: [True if all Elements in first Array were found in Second, else False: Bool]
+    # Returns: [True if all Elements in first Array were found in Second, else False: Int]
     local -n array1="$1"
     local -n array2="$2"
     local elm
@@ -97,7 +97,7 @@ test_allElementsIn() {
 # juxtaposition.
 all() {
     # Args: [Name of Array to act on: String] [Expression: String...]
-    # Returns: [True if all calls to Expression evaluated to True, else False: Bool]
+    # Returns: [True if all calls to Expression evaluated to True, else False: Int]
     local -n array1="$1"
     local elm
     shift
@@ -120,7 +120,7 @@ not() {
 # and for completeness sake:
 any() {
     # Args: [Name of Array to act on: String] [Expression: String...]
-    # Returns: [True if all calls to Expression evaluated to True, else False: Bool]
+    # Returns: [True if all calls to Expression evaluated to True, else False: Int]
     local -n array1="$1"
     local elm
     shift
@@ -161,8 +161,8 @@ test_all_inArray() {
 # construct a fucntion with side effects:
 
 append() {
-    # Args [Name of Array to append to: String] [Element to append: String]
-    # Returns: [True, if append succeeded, else False: Bool]
+    # Args [Name of Array to append to: String] [Element to append: Any]
+    # Returns: [True, if append succeeded, else False: Int]
     local -n ref="$1"
     local elm="$2"
 
@@ -172,15 +172,42 @@ append() {
 
 test_append() {
     local -n testA=test3
-    append testA 'c'
+    append testA 'c' || echo 'some error during append'
     [[ "${testA[*]}" == "${test1[*]}" ]] && echo 'should work'
 
-    all testA append testA
+    all testA append testA || echo 'some error during append'
     [[ "${testA[*]}" == "${test1[*]} ${test1[*]}" ]] && echo 'should work'
 }
 
 # It may not be the the most intellectually satisfying endeavour, but its
 # code working as expected, which is nice.
+
+insertAt() {
+    # Args: [Name of Array to insert into: String] [Index to insert after: Int] [Element  to insert: Any]
+    # Returns: [Return value of insert operation, 13 if Index > length of Array: Int]
+    local -n ref="$1"
+    local -i idx="$2"
+    local elm="$3"
+    local -i len="${#ref[@]}"
+    [[ $(($len + 1)) -gt $idx && $idx -ge 0 ]] \
+        || { echo "Index (${2}) out of range"; return 13; }
+    ref=( "${ref[@]:0:$idx}" "$elm" "${ref[@]:$idx:$len}" )
+    return $?
+}
+
+test_insertAt() {
+    local -n testA=test3
+    insertAt testA 3 'c' && echo 'should fail'
+    echo "${testA[@]}"
+}
+
+zip() {
+    local -n array1="$1"
+    local -n array2="$2"
+    [[ "${#array1[@]}" == "${#array2[@]}" ]] \
+        || { echo 'Arrays are not same length, aborting'; return 1; }
+}
+
 
 # So it seems our array-and-strings-based life in the shell is good.  We can
 # define clean interfaces with minimal responsibility and pass around arrays

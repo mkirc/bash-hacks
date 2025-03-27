@@ -157,10 +157,36 @@ test_all_inArray() {
     # not all test1 inArray test6 && echo 'should uhm also work'
 }
 
+# inArray is a pure function. Let's see what happens when we
+# construct a fucntion with side effects:
+
+append() {
+    # Args [Name of Array to append to: String] [Element to append: String]
+    # Returns: [True, if append succeeded, else False: Bool]
+    local -n ref="$1"
+    local elm="$2"
+
+    ref+=("$2")
+    return $?
+}
+
+test_append() {
+    local -n testA=test3
+    append testA 'c'
+    [[ "${testA[*]}" == "${test1[*]}" ]] && echo 'should work'
+
+    all testA append testA
+    [[ "${testA[*]}" == "${test1[*]} ${test1[*]}" ]] && echo 'should work'
+}
+
+# It may not be the the most intellectually satisfying endeavour, but its
+# code working as expected, which is nice.
+
 # So it seems our array-and-strings-based life in the shell is good.  We can
 # define clean interfaces with minimal responsibility and pass around arrays
 # without typing "${...[@]}" all the time. The next example exposes a problem
-# with call-by-reference: external commands can't access arrays.
+# with call-by-reference: external processes (forked or created otherwise)
+# can't access our array references.
 
 # The following function works when composed with 'simpleElementIn', since the
 # values of array2 are actually expanded to the command line. Note, that the

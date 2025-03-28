@@ -171,7 +171,7 @@ append() {
 }
 
 test_append() {
-    local -n testA=test3
+    local -n testA="( $(catArray test3) )"
     append testA 'c' || echo 'some error during append'
     [[ "${testA[*]}" == "${test1[*]}" ]] && echo 'should work'
 
@@ -180,7 +180,8 @@ test_append() {
 }
 
 # It may not be the the most intellectually satisfying endeavour, but its
-# code working as expected, which is nice.
+# code working as expected, which is nice. We can define some more imperative
+# functions which will come in handy for sure.
 
 insertAt() {
     # Args: [Name of Array to insert into: String] [Index to insert after: Int] [Element  to insert: Any]
@@ -191,23 +192,35 @@ insertAt() {
     local -i len="${#ref[@]}"
     [[ $(($len + 1)) -gt $idx && $idx -ge 0 ]] \
         || { echo "Index (${2}) out of range"; return 13; }
+
     ref=( "${ref[@]:0:$idx}" "$elm" "${ref[@]:$idx:$len}" )
     return $?
 }
 
 test_insertAt() {
-    local -n testA=test3
-    insertAt testA 3 'c' && echo 'should fail'
-    echo "${testA[@]}"
+    local -a testA="( $(catArray test3) )"
+    insertAt testA 3 'c' &>/dev/null && echo 'should fail'
+    insertAt testA 2 'c' && [[ "${testA[*]}" == 'a b c' ]] && echo 'should work'
 }
 
-zip() {
-    local -n array1="$1"
-    local -n array2="$2"
-    [[ "${#array1[@]}" == "${#array2[@]}" ]] \
-        || { echo 'Arrays are not same length, aborting'; return 1; }
+prependToArray() {
+    # Args: [Name of Array to prepend to: String] [Name of Array to prepend: String]
+    # Returns: [0 for success, 1 for error in insertAt: Int]
+    local -n arrayToPrependTo="$1"
+    local -n arrayToPrepend="$2"
+    local -i index
+    for index in "${!arrayToPrepend[@]}"; do
+        # insert reversed array at pos 0
+        insertAt arrayToPrependTo 0 "${arrayToPrepend[$((-1-$index))]}" || return 1
+    done
+    return 0
 }
 
+test_prependToArray() {
+    local -a testB="( $(catArray test6) )"
+    prependToArray testB test1
+    [[ "${testB[@]@Q}" == "'a' 'b' 'c' 'a b' 'c d'" ]] && echo 'should work'
+}
 
 # So it seems our array-and-strings-based life in the shell is good.  We can
 # define clean interfaces with minimal responsibility and pass around arrays
@@ -435,6 +448,50 @@ test_gather() {
     [[ $(gather test4 inArray test1) == "'a'" ]] && echo 'should work'
     [[ $(gather test4 not inArray test1) == "'d'" ]] && echo 'should work'
     [[ $(gather test1 not inArray test1) == "" ]] && echo 'should work'
+}
+
+# at this point we can mix and match approaches as needed. For example
+# this function returning a reversed copy of the input array uses
+# the composibility of 'all':
+
+reversed() {
+    # Args: [Name of Array to reverse: String]
+    # Returns: [Quoted Array with elements from input in reverse order: String]
+    local -a out=()
+    all "$1" insertAt out 0
+    echo "${out[@]@Q}"
+}
+
+test_reversed() {
+    local -a reversed1="( $(reversed test6) )"
+    [[ "${reversed1[*]@Q}" == "'c d' 'a b'" ]] && echo 'should work'
+    [[ $(reversed reversed1) == "${test6[*]@Q}" ]] && echo 'should also work'
+}
+
+# or we may even compose more complicated functions:
+
+zipped() {
+    # Args: [Name of Array take the even positions: String] [Name of Array to take the odd positions: String]
+    # Returns: [Quoted Array, containing zipped values of inputs: String]
+    local -n arrayEven="$1"
+    local -n arrayOdd="$2"
+    [[ "${#arrayOdd[@]}" == "${#arrayEven[@]}" ]] \
+        || { echo 'Arrays are not same length, aborting'; return 12; }
+
+    local -a out=()
+    local -i index
+    for index in "${!arrayEven[@]}"; do
+        insertAt out $(($index*2)) "${arrayEven[$index]}"
+        insertAt out $(($index*2+1)) "${arrayOdd[$index]}"
+    done
+    echo "${out[@]@Q}"
+}
+
+test_zipped() {
+    local -a testB=(1 2 3)
+    local -a zippedTest="( $(zipped test1 testB) )"
+    [[ "${zippedTest[*]}" == 'a 1 b 2 c 3' ]] && echo 'should work'
+    zipped test1 test3 &>/dev/null && echo 'should fail'
 }
 
 

@@ -11,13 +11,12 @@ test6=("a b" "c d")
 
 # Run the examples herein like: bash arrays/arrayStuff.sh [function name]
 
+
+# Part 1:
 # Picture yourself with the need to check of a string is an element if an
 # indexed array in bash. So you phrase this task to a search engine (or worse)
 # and the following might come up:
 
-# This works by shifting the input elements by one and iterating over the
-# elements left. So we cant pass it an array 'directly' but by supplying its
-# values.
 simpleElementIn() {
     # Args: [Element to match: String] [Elements to match against: String...]
     # Returns: [True if element is found, else false: Int]
@@ -31,6 +30,10 @@ simpleElementIn() {
     return 1
 }
 
+# This works by shifting the input elements by one and iterating over the
+# elements left. So we cant pass it an array 'directly' but by supplying its
+# values.
+
 test_elementsIn() {
     simpleElementIn 'a' "${test1[@]}" && echo "should work"
     simpleElementIn 'a b' "${test6[@]}" && echo "should also work"
@@ -40,6 +43,7 @@ test_elementsIn() {
 
 # This is a modified version, using declare's '-n' flag, which allows to pass
 # an array by reference. This feels cleaner and requires less typing.
+#
 inArray() {
     # Args: [Name of array to match: String] [Element to match: String]
     # Returns: [True if element is found, else false: Int]
@@ -67,6 +71,7 @@ test_inArray() {
 
 # A simple solution would be to just iterate over array1 and apply 'inArray' to
 # its elements and array2...
+
 allElementsIn() {
     # Args: [Name of Array to compare from: String] [Name of array to compare against: String]
     # Returns: [True if all Elements in first Array were found in Second, else False: Int]
@@ -95,6 +100,7 @@ test_allElementsIn() {
 # a number of parameters and a single element, in order to perform its action
 # on all elements of an input array. Note how it composes nicely by
 # juxtaposition.
+
 all() {
     # Args: [Name of Array to act on: String] [Expression: String...]
     # Returns: [True if all calls to Expression evaluated to True, else False: Int]
@@ -108,7 +114,6 @@ all() {
     return 0
 }
 
-# this is an example of another expression which can be composed in that way:
 not() {
     if "$@"; then
         return 1
@@ -130,7 +135,6 @@ any() {
     done
     return 1
 }
-
 
 test_all_inArray() {
     all test1 inArray test1 && echo 'should work'
@@ -158,7 +162,7 @@ test_all_inArray() {
 }
 
 # inArray is a pure function. Let's see what happens when we
-# construct a fucntion with side effects:
+# construct a function with side effects:
 
 append() {
     # Args [Name of Array to append to: String] [Element to append: Any]
@@ -201,6 +205,8 @@ test_insertAt() {
     local -a testA="( $(catArray test3) )"
     insertAt testA 3 'c' &>/dev/null && echo 'should fail'
     insertAt testA 2 'c' && [[ "${testA[*]}" == 'a b c' ]] && echo 'should work'
+    local -a reversedA=()
+    all testA insertAt reversedA 0 && [[ "${reversedA[*]}" == "c b a" ]] && echo 'should work'
 }
 
 prependToArray() {
@@ -224,71 +230,67 @@ test_prependToArray() {
 
 # So it seems our array-and-strings-based life in the shell is good.  We can
 # define clean interfaces with minimal responsibility and pass around arrays
-# without typing "${...[@]}" all the time. The next example exposes a problem
-# with call-by-reference: external processes (forked or created otherwise)
-# can't access our array references.
+# without typing "${...[@]}" all the time.
 
-
-# The following function works when composed with 'simpleElementIn', since the
-# values of array2 are actually expanded to the command line. Note, that the
-# xargs call uses uses recursive dispatch, as described in
+# Bonus digression: Parallel all() and other source'ery.
+# This section used to look different. Code works now, but did not in the
+# past. WIP.
+# Note, that the xargs call uses uses recursive dispatch, as described in
 # ./dispatch/recursive_dispatch.sh.
+
 parallelAll() {
-    local -n array1="$1"
-    local exp="$2"
-    local -n array2="$3"
-
-    printf '%s\n' "${array1[@]}" | xargs -I {} -P 3 bash "$0" "$exp" "{}" "${array2[@]}"
-
-}
-
-# Btw this works because xargs exits with status 123 if any of the invocations
-# exit with status 1-125. If you wonder what is happening before the pipe
-# operator, please be patient, we'll get to it.
-
-test_parallelAll() {
-    parallelAll test1 simpleElementIn test1 && echo "should work"
-    parallelAll test3 simpleElementIn test1 && echo "should also work"
-    parallelAll test6 simpleElementIn test6 && echo "should also work"
-    parallelAll test2 simpleElementIn test1 && echo "should fail"
-    parallelAll test4 simpleElementIn test1 && echo "should also fail"
-    parallelAll test1 simpleElementIn test6 && echo "should also fail"
-}
-
-# Here's the same thing but with passing the array by reference
-parallelAllWithArrays() {
+    # Args: [Name of Array to act on: String] [Expression: String...]
+    # Returns: [True if all calls to Expression evaluated to True, else False: Int]
     local -n array1="$1"
     shift
 
     # echo "${array1[@]}"
 
-    printf '%s\n' "${array1[@]@Q}" | xargs -t -I {} -P 3 bash "$0" "$exp" "$@" "{}"
+    catArray array1 | splitArray | xargs -I {} -P 3 bash "$0" "$@" '{}'
 
 }
 
-test_parallelWithArrays() {
-    echo 'xargs -t prints input line'
-    # none of these work
-    parallelAllWithArrays test1 inArray test1 && echo "should work"
-    parallelAllWithArrays test3 inArray test1 && echo "should also work"
-    parallelAllWithArrays test2 inArray test1 && echo "should fail"
-    parallelAllWithArrays test4 inArray test1 && echo "should also fail"
-    # this just does not work
+# Btw this works because xargs exits with status 123 if any of the invocations
+# exit with status 1-125. If you wonder what is happening left of the pipe
+# operator, please be patient, we'll get to it.
+
+test_parallelAll() {
+
+    parallelAll test1 inArray test1 && echo 'should work'
+    parallelAll test3 inArray test1 && echo 'should also work'
+    parallelAll test6 inArray test6 && echo "should also work"
+    parallelAll test2 inArray test1 && echo 'should fail'
+    parallelAll test4 inArray test1 && echo 'should also fail'
+    parallelAll test1 inArray test6 && echo 'should also fail'
+    parallelAll test1 inArray test3 && echo 'should also fail'
+
+    parallelAll test6 not inArray test6 && echo "should fail"
+    # none found
+    parallelAll test1 not inArray test6 && echo 'should uhm work'
+    # some found
+    parallelAll test4 not inArray test1 && echo 'should uhm fail'
+
+    local -n testA=test1
+    parallelAll test1 inArray testA && echo 'should work' # but fails, can you guess why?
+
 }
 
-# So here we have found a peculiar discrepancy: We can compose array-based functions
-# inside of the script's scope nicely but we can't pass arrays _to_ our script.
-# All we can do is passing the values, which poses additional overhead to
-# ensure compatibility (such as parsing values into arrays again). This is the
-# perfect place for bugs to crawl in.
+# You may or may not agree that parallelAll looks rather involved. It only
+# really works because the test Arrays are global variables in this script
+# and are set via recursive dispatch for every forked process. It is much
+# slower than all() and surely parsing the whole file only to invoke a
+# function is not very efficient. Since inArray is a pure lookup, we don't
+# have to think about job control, let's maybe leave it at that and skip the
+# imperative functions :)
 
-# There is but a loophole: Its in fact possible to pass arrays to functions
-# declared in other scripts by 'source'ing them. 'source' can take arguments
-# and since it executes the commands in the current shell, variables 'carry
-# over'.  By the way, source has some interesting properties. It returns the
-# exit status of the command last run in the file.  If we allow recursive
-# dispatch in the source target, we can return function values or stdout as
-# well.
+# We're pretty deep into weird bash stuff already, aren't we? Did you know,
+# that it's in fact possible to pass arrays to functions declared in other
+# scripts by 'source'ing them? 'source' can take arguments and since it
+# executes the commands in the current shell, variables 'carry over'.  By the
+# way, source has some interesting properties. It returns the exit status of
+# the command last run in the file.  If we allow recursive dispatch in the
+# source target, we can return function values or stdout as well.
+
 test_sourceArray() {
     local -ar sourcedArray="( $(source ./arrays/toBeSourced.sh arrayFun test1) )"
     all sourcedArray inArray test1 && echo 'should work'
@@ -300,12 +302,7 @@ test_sourceTruth() {
 
 }
 
-# I guess this goes down even further the rabbit hole of
-# esoteric-but-maybe-useful shell aspects. But think about it:  With this
-# technique we can create an array-based 'functional core' of scripts than can
-# be factored in a sane fashion, which in turn can be directed by an
-# 'imperative shell', which acts like any other shell script.
-
+# Part2:
 # The earlier examples focused mainly on transforming arrays -which are passed
 # by reference- into scalars, like true or false.  Next, lets have a look into
 # the state of the union regarding returning arrays and composition in pipes.
@@ -316,7 +313,7 @@ test_sourceTruth() {
 #     ALL THINGS SHOWN HERE ARE MERE HACKS!
 #
 # Yep, you have been warned. Remember how piping the array into xargs in
-# parallelAll involved some transformation with printf and another ominous @?
+# parallelAll involved some commands left of the pipe?
 # This had to be done because the pipe operator forks a subprocess with its own
 # stdin and stdout, connecting stdout of the process left of the pipe with
 # stdin on the right. The problem is: printing the array to stdout just
@@ -344,11 +341,12 @@ test_operators() {
 # 'weird' whitespaces and other things while being able to reconstruct the
 # array easily. @A is a bit of an oddity (in an already pretty odd bunch).  It
 # transforms the parameter before it into the respective declare statement.  We
-# wont use it for now, but I can hear it's calling!
+# won't use it for now, but I can hear it's calling!
 
 # Lets use our newly gained knowledge to construct a function which returns an
 # array. It could be anything, but let's go with something useful, like a
 # reimplementation of cat, but for arrays:
+
 catArray() {
     # Args: [Names of arrays to concatenate: String...]
     # Returns: [Quoted String of concatenated Array Elements: String]
@@ -462,9 +460,9 @@ reversed() {
 }
 
 test_reversed() {
-    local -a reversed1="( $(reversed test6) )"
-    [[ "${reversed1[*]@Q}" == "'c d' 'a b'" ]] && echo 'should work'
-    [[ $(reversed reversed1) == "${test6[*]@Q}" ]] && echo 'should also work'
+    local -a reversed6="( $(reversed test6) )"
+    [[ "${reversed6[*]@Q}" == "'c d' 'a b'" ]] && echo 'should work'
+    [[ $(reversed reversed6) == "${test6[*]@Q}" ]] && echo 'should also work'
 }
 
 # or we may even compose more complicated functions:
@@ -504,8 +502,7 @@ parallelAllFun() {
 
     shareArray() { echo "${array2[@]@A}"; }
     export -f "$exp"
-    export -f shareArray
-    printf '%s\n' "${array1[@]}" | xargs -t -I {} -P 3 bash -c "$(shareArray); ${exp} ${!array2} '{}'"
+    printf '%s\n' "${array1[@]}" | xargs -I {} -P 3 bash -c "$(shareArray); ${exp} ${!array2} '{}'"
 
 }
 

@@ -228,6 +228,7 @@ test_prependToArray() {
 # with call-by-reference: external processes (forked or created otherwise)
 # can't access our array references.
 
+
 # The following function works when composed with 'simpleElementIn', since the
 # values of array2 are actually expanded to the command line. Note, that the
 # xargs call uses uses recursive dispatch, as described in
@@ -237,9 +238,7 @@ parallelAll() {
     local exp="$2"
     local -n array2="$3"
 
-    # echo "${array1[@]}"
-
-    printf '%s\n' "${array1[@]@Q}" | xargs -I {} -P 3 bash "$0" "$exp" "{}" "${array2[@]}"
+    printf '%s\n' "${array1[@]}" | xargs -I {} -P 3 bash "$0" "$exp" "{}" "${array2[@]}"
 
 }
 
@@ -492,6 +491,31 @@ test_zipped() {
     local -a zippedTest="( $(zipped test1 testB) )"
     [[ "${zippedTest[*]}" == 'a 1 b 2 c 3' ]] && echo 'should work'
     zipped test1 test3 &>/dev/null && echo 'should fail'
+}
+
+# Bonus digression:
+# Exporting functions in Bash and abusing @A.
+
+
+parallelAllFun() {
+    local -n array1="$1"
+    local exp="$2"
+    local -n array2="$3"
+
+    shareArray() { echo "${array2[@]@A}"; }
+    export -f "$exp"
+    export -f shareArray
+    printf '%s\n' "${array1[@]}" | xargs -t -I {} -P 3 bash -c "$(shareArray); ${exp} ${!array2} '{}'"
+
+}
+
+test_parallelAllFun() {
+    parallelAllFun test1 inArray test1 && echo "should work"
+    parallelAllFun test3 inArray test1 && echo "should also work"
+    parallelAllFun test6 inArray test6 && echo "should also work"
+    parallelAllFun test2 inArray test1 && echo "should fail"
+    parallelAllFun test4 inArray test1 && echo "should also fail"
+    parallelAllFun test1 inArray test6 && echo "should also fail"
 }
 
 

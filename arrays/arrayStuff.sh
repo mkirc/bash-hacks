@@ -114,15 +114,6 @@ all() {
     return 0
 }
 
-not() {
-    if "$@"; then
-        return 1
-    else
-        return 0
-    fi
-}
-
-# and for completeness sake:
 any() {
     # Args: [Name of Array to act on: String] [Expression: String...]
     # Returns: [True if all calls to Expression evaluated to True, else False: Int]
@@ -134,6 +125,14 @@ any() {
         "$@" "$elm" && return 0
     done
     return 1
+}
+
+not() {
+    if "$@"; then
+        return 1
+    else
+        return 0
+    fi
 }
 
 test_all_inArray() {
@@ -168,7 +167,6 @@ append() {
     # Args [Name of Array to append to: String] [Element to append: Any]
     # Returns: [True, if append succeeded, else False: Int]
     local -n ref="$1"
-    local elm="$2"
 
     ref+=("$2")
     return $?
@@ -403,11 +401,50 @@ unsplitArray() {
     echo "${tempArray[@]@Q}"
 }
 
-test_split() {
+test_splitArray() {
     [[ $(splitArray "${test6[@]@Q}") == $(echo "${test6[@]@Q}" | splitArray) ]] && echo 'should work'
     [[ $(catArray test6 test6 | splitArray | sort -u | unsplitArray) == $(catArray test6) ]] && echo 'should work'
     [[ $(catArray test6 | splitArray | unsplitArray) == $(catArray test6) ]] && echo 'should also work'
     [[ $(unsplitArray $'a b\nc d') == $(echo $'a b\nc d' | unsplitArray) ]] && echo 'should also work'
+    local -a testA=("./*")
+    catArray testA | splitArray
+    splitArray './*' # huh, this expands the glob?!
+}
+
+stripPrefix() {
+    # Args: [Name of Array to strip: String] [Separator String according toBash Glob Notation: String]
+    # Returns [Quoted string of stripped array elements: String]
+    local sep="$1"
+    shift
+    local -a tempArray="( ${*:-$(</dev/stdin)} )"
+    local -i idx
+
+    for idx in "${!tempArray[@]}"; do
+        tempArray[$idx]="${tempArray[$idx]##$sep}" || return 1
+    done
+    echo "${tempArray[@]@Q}"
+}
+
+stripSuffix() {
+    # Args: [Name of Array to strip: String] [Separator String according toBash Glob Notation: String]
+    # Returns [Quoted string of stripped array elements: String]
+    local sep="$1"
+    shift
+    local -a tempArray="( ${*:-$(</dev/stdin)} )"
+    local -i idx
+
+    for idx in "${!tempArray[@]}"; do
+        tempArray[$idx]="${tempArray[$idx]%%$sep}" || return 1
+    done
+    echo "${tempArray[@]@Q}"
+}
+
+test_stripArray() {
+    local -a testA=('a/a' 'a/b/b' 'c')
+    local -a testB=('a ' 'b c' 'c')
+    [[ $(catArray testA | stripPrefix '*/') == $(stripPrefix '*/' "${testA[@]@Q}") ]] && echo 'should work'
+    [[ $(catArray testB | stripSuffix ' *') == $(catArray test1) ]] && echo 'should work'
+    [[ $(catArray testA | stripPrefix '*/') == $(catArray test1) ]] && echo 'should work'
 }
 
 # ok, now we have a way to return arrays and manipulate them...but in the
@@ -421,7 +458,7 @@ test_split() {
 # Lets see if at least we can get some of the composibility back. For example
 # we may want all Elements of one Array which satisfy an expression acting on
 # them.
-gather() {
+gatherAll() {
     # Args: [Name of Array to compare from: String] [Expression]
     # Returns [Quoted string of array elements: String]
     local -n array1="$1"
@@ -438,13 +475,13 @@ gather() {
     echo "${out[@]@Q}"
 }
 
-test_gather() {
-    [[ $(gather test3 inArray test1) == $(catArray test3) ]] && echo "should work"
-    [[ $(gather test1 inArray test1) == $(catArray test1) ]] && echo "should work"
-    [[ $(gather test1 inArray test3) == $(catArray test3) ]] && echo "should work"
-    [[ $(gather test4 inArray test1) == "'a'" ]] && echo 'should work'
-    [[ $(gather test4 not inArray test1) == "'d'" ]] && echo 'should work'
-    [[ $(gather test1 not inArray test1) == "" ]] && echo 'should work'
+test_gatherAll() {
+    [[ $(gatherAll test3 inArray test1) == $(catArray test3) ]] && echo "should work"
+    [[ $(gatherAll test1 inArray test1) == $(catArray test1) ]] && echo "should work"
+    [[ $(gatherAll test1 inArray test3) == $(catArray test3) ]] && echo "should work"
+    [[ $(gatherAll test4 inArray test1) == "'a'" ]] && echo 'should work'
+    [[ $(gatherAll test4 not inArray test1) == "'d'" ]] && echo 'should work'
+    [[ $(gatherAll test1 not inArray test1) == "" ]] && echo 'should work'
 }
 
 # at this point we can mix and match approaches as needed. For example
@@ -477,11 +514,19 @@ zipped() {
 
     local -a out=()
     local -i index
-    for index in "${!arrayEven[@]}"; do
+    for index in $(getKeys arrayEven); do
         insertAt out $(($index*2)) "${arrayEven[$index]}"
         insertAt out $(($index*2+1)) "${arrayOdd[$index]}"
     done
     echo "${out[@]@Q}"
+}
+
+# ah, btw:
+getKeys() {
+    # Args: [Name of Array: String]
+    # Returns: String of Keys for Array: String|Int]
+    local -n ref="$1"
+    echo "${!ref[@]}"
 }
 
 test_zipped() {

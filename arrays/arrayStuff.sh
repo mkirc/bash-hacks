@@ -244,7 +244,7 @@ parallelAll() {
 
     # echo "${array1[@]}"
 
-    catArray array1 | splitArray | xargs -I {} -P 3 bash "$0" "$@" '{}'
+    catArray array1 | breakLines | xargs -I {} -P 3 bash "$0" "$@" '{}'
 
 }
 
@@ -379,7 +379,7 @@ test_cat() {
 
 # Next we may want to parse the @Q-transformed output in some way.  For
 # example, print it as lines for consumption in pipes:
-splitArray() {
+breakLines() {
     # Args: [Quoted string of array elements: String]
     # Returns: [Newline-separated array elements: String]
     local -ar tempArray="( ${*:-$(</dev/stdin)} )"
@@ -387,8 +387,8 @@ splitArray() {
     printf '%s\n' "${tempArray[@]}"
 }
 
-# This is the inverse function to splitarray
-unsplitArray() {
+# This is the inverse function to breakLines
+joinLines() {
     # Args: [Newline-separated array elements: String]
     # Returns [Quoted string of array elements: String]
     local -a tempArray=()
@@ -401,14 +401,14 @@ unsplitArray() {
     echo "${tempArray[@]@Q}"
 }
 
-test_splitArray() {
-    [[ $(splitArray "${test6[@]@Q}") == $(echo "${test6[@]@Q}" | splitArray) ]] && echo 'should work'
-    [[ $(catArray test6 test6 | splitArray | sort -u | unsplitArray) == $(catArray test6) ]] && echo 'should work'
-    [[ $(catArray test6 | splitArray | unsplitArray) == $(catArray test6) ]] && echo 'should also work'
-    [[ $(unsplitArray $'a b\nc d') == $(echo $'a b\nc d' | unsplitArray) ]] && echo 'should also work'
+test_breakLines() {
+    [[ $(breakLines "${test6[@]@Q}") == $(echo "${test6[@]@Q}" | breakLines) ]] && echo 'should work'
+    [[ $(catArray test6 test6 | breakLines | sort -u | joinLines) == $(catArray test6) ]] && echo 'should work'
+    [[ $(catArray test6 | breakLines | joinLines) == $(catArray test6) ]] && echo 'should also work'
+    [[ $(joinLines $'a b\nc d') == $(echo $'a b\nc d' | joinLines) ]] && echo 'should also work'
     local -a testA=("./*")
-    catArray testA | splitArray
-    splitArray './*' # huh, this expands the glob?!
+    catArray testA | breakLines
+    breakLines './*' # huh, this expands the glob?!
 }
 
 stripPrefix() {
@@ -445,6 +445,22 @@ test_stripArray() {
     [[ $(catArray testA | stripPrefix '*/') == $(stripPrefix '*/' "${testA[@]@Q}") ]] && echo 'should work'
     [[ $(catArray testB | stripSuffix ' *') == $(catArray test1) ]] && echo 'should work'
     [[ $(catArray testA | stripPrefix '*/') == $(catArray test1) ]] && echo 'should work'
+}
+
+splitString() {
+    # Args: [Token on which to split: String] [String to split: String]
+    # Returns: [Quoted String of Array Elements: String]
+    local token="$1"
+    shift
+    local string="${*:-$(</dev/stdin)}"
+    local -a out=(${string//$token/ })
+    echo "${out[@]@Q}"
+}
+
+test_splitString() {
+    local testString1="the quick fox jumps over the lazy dog."
+    [[ $(splitString ' ' "$testString1") == "'the' 'quick' 'fox' 'jumps' 'over' 'the' 'lazy' 'dog.'" ]] && echo 'should work'
+    [[ $(splitString ' ' "$testString1") == $(echo "$testString1" | splitString ' ') ]] && echo 'should work'
 }
 
 # ok, now we have a way to return arrays and manipulate them...but in the

@@ -10,7 +10,7 @@ makeTensor() {
     local -i dim max_dim="$#"
 
     # Default value to initialize the tensor
-    local default_val=0
+    local default_val=${TENSOR_DEFAULT:-0}
 
     # iterate over dimensions
     for(( dim=1; dim<=$max_dim; dim++ )); do
@@ -59,7 +59,7 @@ test_makeTensor() {
 
 getTensorComponent() {
     # Args: [Index of desired component (row-major order): Int...(Dim)]
-    # Returns: Tensor of order-(Initial Dimension-Dim): String]
+    # Returns: [Tensor of order-(Initial Dimension-Dim): String]
     local -a current_tensor="( $(</dev/stdin) )"
     local -i dim max_dim="$#"
 
@@ -83,6 +83,78 @@ test_getTensorComponent() {
     [[ $(echo "${two[@]@Q}") == $(echo "${two2[@]@Q}") ]] && echo 'should work'
     local -a zero="( $(echo "${twoByTwoByTwo[@]@Q}" | getTensorComponent 0 0 0) )"
     declare -p zero
+}
+
+setTensorComponent() {
+
+    local -a component_string="$(</dev/stdin)"
+    local -n current_tensor="$1"
+    shift
+
+    local -a max_idxs=()
+
+    # for dimensions - 1
+    local -i dim max_dim="$#"
+    for((dim=1; dim<=$max_dim; dim++)); do
+        # get index to insert into for dimension
+        local -i target_idx=${!dim}
+
+        # for all indices per dimension
+        local -i idx max_idx=$((${#current_tensor[@]}-1))
+        for((idx=0; idx<=$max_idx; idx++)); do
+            # case idx!=target_idx: record component string for later use
+            local tensor_"$dim"_"$idx"="$(echo ${current_tensor[$idx]})"
+
+            # case idx==target_index, dim<max_dim: decent into tensor
+            [[ $idx -eq $target_idx ]] && [[ $dim -lt $max_dim ]] \
+                && local -a next_tensor="( $(echo $current_tensor[$idx]) )"
+
+            # case idx==target_idx, dim==max_dim: set component string
+            [[ $idx -eq $target_idx ]] && [[ $dim -eq $max_dim ]] \
+                && local tensor_"$dim"_"$idx"="$component_string"
+        done  
+
+        [[ $dim -lt $max_dim ]] \
+            && local -a current_tensor="( $(echo ${next_tensor[@]@Q}) )"
+        
+        # record max_idx for dim for later use
+        max_idxs+=($max_idx)
+    done
+
+    local -a out_tensor=()
+    # reconstruct tensor bottom up
+    for((dim=$max_dim; dim>0; dim--)); do
+        local -i target_idx=${!dim}
+        out_tensor=()
+
+        local -i idx max_idx=${max_idxs[$(($dim-1))]}
+        for((idx=0; idx<=$max_idx; idx++)); do
+            if [[ -v tensor_"$dim"_"$idx" ]]; then
+                local tensor_name="tensor_${dim}_${idx}"
+                out_tensor+=( "$(echo ${!tensor_name})" )
+            fi
+        done
+
+        if [[ $dim -gt 1 ]]; then
+            local next_dim=$(($dim-1))
+            local next_target_idx=${!next_dim}
+            local tensor_"$next_dim"_"$next_target_idx"="$(echo ${out_tensor[*]})"
+        fi
+    done
+
+    echo "${out_tensor[@]@Q}"
+}
+
+test_setTensorComponent() {
+    TENSOR_DEFAULT=1
+    local -a list="( $(makeTensor 2) )"
+    TENSOR_DEFAULT=0
+    local -a matrix="( $(makeTensor 2 2) )"
+    declare -p matrix
+    local -a out="( $(echo "${list[@]@Q}" | setTensorComponent matrix 1) )"
+    declare -p out
+    local -a out="( $(echo "'2'" | setTensorComponent out 0 1) )"
+    declare -p out
 }
 
 

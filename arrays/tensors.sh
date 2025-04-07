@@ -85,16 +85,53 @@ test_getTensorComponent() {
     declare -p zero
 }
 
+isOrderZero() {
+    # Args: [Tensor component: String...]
+    # Returns [True if length of component is one, else False: Int]
+
+    # Because of the way makeTensor() constructs a tensor, dimensions with
+    # shape 1 will be treated as just one more level of escaping, thus an Array
+    # constructed from that will have as many elements as the escaped element,
+    # 1 for a tensor order-0 or higher otherwise.
+    local -a _tensor="( $(echo "${@}") )"
+    [[ "${#_tensor[@]}" -gt 1 ]] && return 1 || return 0
+}
+
+test_isOrderZero() {
+    isOrderZero $(echo "'a'") && echo 'should work'
+    local -a list="( $(makeTensor 2) )"
+    # declare -p list
+    isOrderZero "${list[@]@Q}" && echo 'should fail'
+    local -a matrix="( $(makeTensor 2 2) )"
+    # declare -p matrix
+    isOrderZero "${matrix[@]@Q}" && echo 'should fail'
+    local -a weird_list="( $(makeTensor 1 2) )"
+    # declare -p weird_list
+    isOrderZero "${weird_list[@]@Q}" && echo 'should also fail'
+    local -a weird_matrix="( $(makeTensor 1 2 2) )"
+    # declare -p weird_matrix
+    isOrderZero "${weird_matrix[@]@Q}" && echo 'should also fail'
+}
+
 setTensorComponent() {
 
-    local -a component_string="$(</dev/stdin)"
+    local component_string="$(</dev/stdin)"
     local -n current_tensor="$1"
     shift
 
+    # If the dimension at which the component to insert is equal to the order
+    # of the tensor (or in other words, if the component is of order zero) the
+    # the other components at this order need to be escaped for proper
+    # encoding.
+    isOrderZero "$component_string" \
+        && local -i component_order=0 \
+        || local -i component_order=1
+
+    # record max_idx for dim for later use
     local -a max_idxs=()
 
-    # descend into tensor following the supplied indices,
-    # recording unchanged components for reconstruction
+    # descend into tensor following the supplied indices, recording unchanged
+    # components for reconstruction
     local -i dim max_dim="$#"
     for((dim=1; dim<=$max_dim; dim++)); do
         # get index to follow into for current dimension
@@ -104,12 +141,9 @@ setTensorComponent() {
         local -i idx max_idx=$((${#current_tensor[@]}-1))
         for((idx=0; idx<=$max_idx; idx++)); do
             # case idx!=target_idx: record component string for later use
-            # TODO: If the dimension of the component to insert is equal
-            # to the dimension of the tensor or, in other words, if the
-            # component is of order zero, the value needs to be escaped
-            # for proper encoding. For this the order of the tensor to
-            # be manipulated needs to be known, right?
-            local tensor_"$dim"_"$idx"="$(echo ${current_tensor[$idx]})"
+            [[ $dim -eq $max_dim ]] && [[ $component_order -eq 0 ]] \
+                && local tensor_"$dim"_"$idx"="$(echo ${current_tensor[$idx]@Q})" \
+                || local tensor_"$dim"_"$idx"="$(echo ${current_tensor[$idx]})"
 
             # case idx==target_index, dim<max_dim: mark next level for descent
             [[ $idx -eq $target_idx ]] && [[ $dim -lt $max_dim ]] \
@@ -123,7 +157,6 @@ setTensorComponent() {
         [[ $dim -lt $max_dim ]] \
             && local -a current_tensor="( $(echo ${next_tensor[@]@Q}) )"
 
-        # record max_idx for dim for later use
         max_idxs+=($max_idx)
     done
 

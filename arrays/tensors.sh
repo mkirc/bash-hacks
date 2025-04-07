@@ -10,7 +10,7 @@ makeTensor() {
     local -i dim max_dim="$#"
 
     # Default value to initialize the tensor
-    local default_val=${TENSOR_DEFAULT:-0}
+    local default_val=${TENSOR_DEFAULT_VAL:-0}
 
     # iterate over dimensions
     for(( dim=1; dim<=$max_dim; dim++ )); do
@@ -93,40 +93,46 @@ setTensorComponent() {
 
     local -a max_idxs=()
 
-    # for dimensions - 1
+    # descend into tensor following the supplied indices,
+    # recording unchanged components for reconstruction
     local -i dim max_dim="$#"
     for((dim=1; dim<=$max_dim; dim++)); do
-        # get index to insert into for dimension
+        # get index to follow into for current dimension
         local -i target_idx=${!dim}
 
         # for all indices per dimension
         local -i idx max_idx=$((${#current_tensor[@]}-1))
         for((idx=0; idx<=$max_idx; idx++)); do
             # case idx!=target_idx: record component string for later use
+            # TODO: If the dimension of the component to insert is equal
+            # to the dimension of the tensor or, in other words, if the
+            # component is of order zero, the value needs to be escaped
+            # for proper encoding. For this the order of the tensor to
+            # be manipulated needs to be known, right?
             local tensor_"$dim"_"$idx"="$(echo ${current_tensor[$idx]})"
 
-            # case idx==target_index, dim<max_dim: decent into tensor
+            # case idx==target_index, dim<max_dim: mark next level for descent
             [[ $idx -eq $target_idx ]] && [[ $dim -lt $max_dim ]] \
                 && local -a next_tensor="( $(echo $current_tensor[$idx]) )"
 
-            # case idx==target_idx, dim==max_dim: set component string
+            # case idx==target_idx, dim==max_dim: set supplied component string
             [[ $idx -eq $target_idx ]] && [[ $dim -eq $max_dim ]] \
                 && local tensor_"$dim"_"$idx"="$component_string"
-        done  
+        done
 
         [[ $dim -lt $max_dim ]] \
             && local -a current_tensor="( $(echo ${next_tensor[@]@Q}) )"
-        
+
         # record max_idx for dim for later use
         max_idxs+=($max_idx)
     done
 
+    # reconstruct tensor bottom up.
     local -a out_tensor=()
-    # reconstruct tensor bottom up
     for((dim=$max_dim; dim>0; dim--)); do
-        local -i target_idx=${!dim}
         out_tensor=()
 
+        # for all indices per dimension
         local -i idx max_idx=${max_idxs[$(($dim-1))]}
         for((idx=0; idx<=$max_idx; idx++)); do
             if [[ -v tensor_"$dim"_"$idx" ]]; then
@@ -146,9 +152,9 @@ setTensorComponent() {
 }
 
 test_setTensorComponent() {
-    TENSOR_DEFAULT=1
+    TENSOR_DEFAULT_VAL=1
     local -a list="( $(makeTensor 2) )"
-    TENSOR_DEFAULT=0
+    TENSOR_DEFAULT_VAL=0
     local -a matrix="( $(makeTensor 2 2) )"
     declare -p matrix
     local -a out="( $(echo "${list[@]@Q}" | setTensorComponent matrix 1) )"

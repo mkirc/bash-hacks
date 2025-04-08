@@ -9,7 +9,7 @@ test3=("a" "b")
 test4=("a" "d")
 test6=("a b" "c d")
 
-# Run the examples herein like: bash arrays/arrayStuff.sh [function name]
+# Run the examples herein like: bash arrays/arrays.sh [function name]
 
 
 # Part 1:
@@ -228,77 +228,9 @@ test_prependToArray() {
 
 # So it seems our array-and-strings-based life in the shell is good.  We can
 # define clean interfaces with minimal responsibility and pass around arrays
-# without typing "${...[@]}" all the time.
-
-# Bonus digression: Parallel all() and other source'ery.
-# This section used to look different. Code works now, but did not in the
-# past. WIP.
-# Note, that the xargs call uses uses recursive dispatch, as described in
-# ./dispatch/recursive_dispatch.sh.
-
-parallelAll() {
-    # Args: [Name of Array to act on: String] [Expression: String...]
-    # Returns: [True if all calls to Expression evaluated to True, else False: Int]
-    local -n array1="$1"
-    shift
-
-    # echo "${array1[@]}"
-
-    catArray array1 | breakLines | xargs -I {} -P 3 bash "$0" "$@" '{}'
-
-}
-
-# Btw this works because xargs exits with status 123 if any of the invocations
-# exit with status 1-125. If you wonder what is happening left of the pipe
-# operator, please be patient, we'll get to it.
-
-test_parallelAll() {
-
-    parallelAll test1 inArray test1 && echo 'should work'
-    parallelAll test3 inArray test1 && echo 'should also work'
-    parallelAll test6 inArray test6 && echo "should also work"
-    parallelAll test2 inArray test1 && echo 'should fail'
-    parallelAll test4 inArray test1 && echo 'should also fail'
-    parallelAll test1 inArray test6 && echo 'should also fail'
-    parallelAll test1 inArray test3 && echo 'should also fail'
-
-    parallelAll test6 not inArray test6 && echo "should fail"
-    # none found
-    parallelAll test1 not inArray test6 && echo 'should uhm work'
-    # some found
-    parallelAll test4 not inArray test1 && echo 'should uhm fail'
-
-    local -n testA=test1
-    parallelAll test1 inArray testA && echo 'should work' # but fails, can you guess why?
-
-}
-
-# You may or may not agree that parallelAll looks rather involved. It only
-# really works because the test Arrays are global variables in this script
-# and are set via recursive dispatch for every forked process. It is much
-# slower than all() and surely parsing the whole file only to invoke a
-# function is not very efficient. Since inArray is a pure lookup, we don't
-# have to think about job control, let's maybe leave it at that and skip the
-# imperative functions :)
-
-# We're pretty deep into weird bash stuff already, aren't we? Did you know,
-# that it's in fact possible to pass arrays to functions declared in other
-# scripts by 'source'ing them? 'source' can take arguments and since it
-# executes the commands in the current shell, variables 'carry over'.  By the
-# way, source has some interesting properties. It returns the exit status of
-# the command last run in the file.  If we allow recursive dispatch in the
-# source target, we can return function values or stdout as well.
-
-test_sourceArray() {
-    local -ar sourcedArray="( $(source ./arrays/toBeSourced.sh arrayFun test1) )"
-    all sourcedArray inArray test1 && echo 'should work'
-}
-test_sourceTruth() {
-    source ./arrays/toBeSourced.sh trueFun && echo 'should work'
-
-    source ./arrays/toBeSourced.sh falseFun && echo 'should fail'
-
-}
+# without typing "${...[@]}" all the time. If you are interested in some
+# interesting limitations, head over to arrays/bonus-digressions.sh, Bonus
+# digression 1.
 
 # Part2:
 # The earlier examples focused mainly on transforming arrays -which are passed
@@ -370,7 +302,7 @@ catArray() {
 # reference as we are used to by now. The second iteraton is just concatenation
 # and in the last line we return the array with the @Q transformation applied.
 
-test_cat() {
+test_catArray() {
     local -a test7=("${test6[@]}" "${test1[@]}")
     [[ $(echo test6 test1 | catArray) == "${test7[*]@Q}" ]] && echo 'should work'
     [[ $(catArray test6 test1) == "${test7[*]@Q}" ]] && echo 'should work'
@@ -550,30 +482,6 @@ test_zipped() {
     local -a zippedTest="( $(zipped test1 testB) )"
     [[ "${zippedTest[*]}" == 'a 1 b 2 c 3' ]] && echo 'should work'
     zipped test1 test3 &>/dev/null && echo 'should fail'
-}
-
-# Bonus digression:
-# Exporting functions in Bash and abusing @A.
-
-
-parallelAllFun() {
-    local -n array1="$1"
-    local exp="$2"
-    local -n array2="$3"
-
-    shareArray() { echo "${array2[@]@A}"; }
-    export -f "$exp"
-    printf '%s\n' "${array1[@]}" | xargs -I {} -P 3 bash -c "$(shareArray); ${exp} ${!array2} '{}'"
-
-}
-
-test_parallelAllFun() {
-    parallelAllFun test1 inArray test1 && echo "should work"
-    parallelAllFun test3 inArray test1 && echo "should also work"
-    parallelAllFun test6 inArray test6 && echo "should also work"
-    parallelAllFun test2 inArray test1 && echo "should fail"
-    parallelAllFun test4 inArray test1 && echo "should also fail"
-    parallelAllFun test1 inArray test6 && echo "should also fail"
 }
 
 
